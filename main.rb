@@ -2,7 +2,11 @@ require 'rack'
 require 'thin'
 require 'erb'
 
-handler = Rack::Handler::Thin
+require './router'
+Router.init
+
+# Require all main.rb from each feature
+Dir["./features/**/main.rb"].each { |f| require(f) }
 
 class Gambiarra
   attr_accessor :request, :routes
@@ -10,26 +14,14 @@ class Gambiarra
   def call(env)
     @request = env
 
-    map_routes
-
     [200, { "Content-Type" => "text/html" }, response]
-  end
-
-  def map_routes
-    @routes = [
-      {
-        method: "GET",
-        path: "/",
-        server: MyApp
-      }
-    ]
   end
 
   def route(method:, path:)
     puts "*** method: #{method}, path: #{path}"
-    route = @routes.find { |route| route[:method].downcase == method.downcase && route[:path].downcase == path.downcase }
+    route = Router.routes.find { |route| route[:path].downcase == path.downcase }
     if route
-      render = route[:server].new.serve
+      render = route[:server].new.process(method: method)
       render
     else
       "<html><body><p>Oops</p></body></html>"
@@ -41,11 +33,14 @@ class Gambiarra
   end
 end
 
-class MyApp
-  def serve
-    # https://blog.revathskumar.com/2014/10/ruby-rendering-erb-template.html
-    ERB.new(File.read("./index.html.erb")).result(binding)
+# Example app
+module ExampleApp
+  class App
+    def serve
+      # https://blog.revathskumar.com/2014/10/ruby-rendering-erb-template.html
+      ERB.new(File.read("./index.html.erb")).result(binding)
+    end
   end
 end
 
-handler.run Gambiarra.new
+Rack::Handler::Thin.run Gambiarra.new
